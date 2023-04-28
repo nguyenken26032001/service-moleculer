@@ -12,7 +12,7 @@ module.exports = {
 			"packageId",
 			"transactionPrice",
 			"quantityToken",
-			"dateTransition",
+			"createdAt",
 			"status",
 		],
 		entityValidators: {
@@ -20,9 +20,16 @@ module.exports = {
 			numberPackage: "number",
 			transactionPrice: "number",
 			quantityToken: "number",
-			dateTransition: "date",
-			status: "string",
+			createdAt: "number",
+			status: "number",
 		},
+	},
+	hooks: {
+		beforeCreate: [
+			(ctx) => {
+				ctx.params.createdAt = Date.now();
+			},
+		],
 	},
 	actions: {
 		addTransaction: {
@@ -39,14 +46,14 @@ module.exports = {
 				const dataPackage = await ctx.call("packages.getPackage", {
 					packageId: packageId, // <=> packageId
 				});
-				const dateTransition = new Date().getTime();
+				// const dateTransition = new Date().getTime();
 				return this.adapter.insert({
 					userId: new ObjectID(userId),
 					packageId: packageId,
 					transactionPrice: dataPackage.price,
 					quantityToken: dataPackage.quantityToken,
-					dateTransition: dateTransition,
-					status: "success",
+					createdAt: new Date().getTime(),
+					status: 1,
 				});
 			},
 		},
@@ -64,6 +71,7 @@ module.exports = {
 			auth: "required",
 			role: "user",
 			async handler(ctx) {
+				let arrNamePackage = [];
 				const dataTransactions = await this.adapter.find({
 					query: {
 						userId: this.adapter.stringToObjectID(
@@ -71,6 +79,18 @@ module.exports = {
 						),
 					},
 				});
+				for (let index = 0; index < dataTransactions.length; index++) {
+					let packageId = dataTransactions[index].packageId;
+					let packageInfo = await ctx.call("packages.getPackage", {
+						packageId,
+					});
+					dataTransactions.forEach((el) => {
+						if (el.packageId == packageInfo._id) {
+							el.packageName = packageInfo.packageName;
+						}
+					});
+				}
+
 				return dataTransactions;
 			},
 		},
