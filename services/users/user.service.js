@@ -47,11 +47,9 @@ module.exports = {
 					fields: ["email"],
 				});
 				if (isExist.length > 0) {
-					return {
-						success: false,
-						code: 400,
-						message: "Email already exists",
-					};
+					throw new MoleculerClientError("Email exist", 400, "", {
+						message: "Email exist",
+					});
 				} else {
 					let passwordHash = await bcrypt.hash(
 						ctx.params.password,
@@ -59,14 +57,16 @@ module.exports = {
 					);
 					ctx.params.password = passwordHash;
 					const user = await this.adapter.insert(ctx.params);
-
-					// const activePackageFree = await ctx.call(
-					// 	"transactions.addTransaction",
-					// 	{
-					// 		packageId: this.settings.PACKAGE_ID_FREE,
-					// 		userId: user._id,
-					// 	}
-					// );
+					console.log(
+						"user id: " + JSON.stringify(user._id).slice(1, -1) // delete "" ở 2 đầu chuỗi
+					);
+					const activePackageFree = await ctx.call(
+						"transactions.addTransaction",
+						{
+							packageId: this.settings.PACKAGE_ID_FREE,
+							userId: JSON.stringify(user._id).slice(1, -1),
+						}
+					);
 					return {
 						success: true,
 						code: 200,
@@ -121,7 +121,7 @@ module.exports = {
 			},
 		},
 		forgotPassword: {
-			rest: "POST /forgot",
+			rest: "POST /forgot-pass",
 			params: {
 				email: { type: "email", required: true, trim: true },
 			},
@@ -129,31 +129,20 @@ module.exports = {
 				const email = ctx.params.email;
 				const user = await this.adapter.findOne({ email: email });
 				if (!user) {
-					throw Error("User not found");
+					throw new MoleculerClientError("User not found", 400);
 				}
-				//send email with token
-				let token = await bcrypt.hash(
-					user.email,
-					parseInt(process.env.BCRYPT_SALT_ROUNDS)
-				);
-				let response = await this.broker.call("mailer.send", {
-					to: user.email,
-					subject: "RESET PASSWORD",
-					html: `<a href="${process.env.APP_URL}/api/user/resetPassword?email=${user.email}&token=${token}"> CLICK HERE TO RESET PASSWORD </a>`,
+				// sendMailForgotPass;
+				user.reset_token = this.generateToken({
+					userId: user._id,
+					userName: user.userName,
+					email: user.email,
 				});
-				if (!response) {
-					return Promise.reject(
-						new MoleculerClientError("send mail failed", 400, "", {
-							message: "failed to send",
-						})
-					);
-				} else {
-					return {
-						success: true,
-						code: 200,
-						message: "check your email to reset password",
-					};
-				}
+				this.sendMailForgotPass(user); // default send success if email exist
+				await this._update(ctx, user);
+				return {
+					code: 200,
+					message: "send mail successfully",
+				};
 			},
 		},
 		getInfo: {
@@ -188,37 +177,6 @@ module.exports = {
 				}
 			},
 		},
-		sendMail: {
-			rest: "GET /sendEmail",
-			params: {
-				to: { type: "email", required: true },
-				subject: { type: "string", required: true },
-				html: { type: "string", required: true },
-			},
-			async handler(ctx) {
-				let hash = await bcrypt.hash(
-					ctx.params.to,
-					parseInt(process.env.BCRYPT_SALT_ROUNDS)
-				);
-				let response = await this.broker.call("mailer.send", {
-					to: ctx.params.to,
-					subject: ctx.params.subject,
-					html: `<a href="${process.env.APP_URL}/api/user/verifyACC?email=${ctx.params.to}&token=${hash}"> Verify email</a>`,
-				});
-				console.log("response: " + response);
-				if (!response) {
-					return Promise.reject(
-						new MoleculerClientError("send mail failed", 400, "", {
-							message: "failed to send",
-						})
-					);
-				}
-				return {
-					success: true,
-					code: 200,
-				};
-			},
-		},
 		getInfoPackageUserBuy: {
 			rest: "GET /info-package-user-buy/:userId",
 			auth: "required",
@@ -247,6 +205,55 @@ module.exports = {
 				};
 			},
 		},
+		getTransactionsLogs: {
+			rest: "GET /user-transactions-logs/:userId",
+			auth: "required",
+			role: "user",
+			async handler(ctx) {
+				const transactions = await ctx.call(
+					"transactions.getTransactionsForUserId",
+					{
+						userId: ctx.params.userId,
+					}
+				);
+				return transactions;
+			},
+		},
+		changePass: {
+			rest: "POST /change-pass",
+			params: {
+				email: { type: "email" },
+				token: { type: "string" },
+			},
+			async handler(ctx) {
+				const email = ctx.params.email;
+				const token = ctx.params.token;
+				const NewPassword = ctx.params.password;
+				const user = await this.adapter.findOne({
+					email: email,
+					reset_token: token,
+				});
+				if (!user) {
+					throw new MoleculerClientError("USER NOT FOUND", 400);
+				}
+				user.password = await bcrypt.hash(
+					NewPassword,
+					parseInt(process.env.BCRYPT_SALT_ROUNDS)
+				);
+				await this._update(ctx, user);
+				return {
+					code: 200,
+					message: "Password updated successfully",
+				};
+			},
+		},
+		sum: {
+			rest: "GET /sum",
+
+			async handler(ctx) {
+				return ctx.params.a + ctx.params.b;
+			},
+		},
 	},
 	methods: {
 		generateToken(data) {
@@ -254,17 +261,12 @@ module.exports = {
 				expiresIn: "3days",
 			});
 		},
-		sendForgotPass(user) {
-			const link = `${this.settings.DOMAIN_NAME}/api/resetPassword?email=${user.email}&token=${user.reset_token}}`;
-			const context = {
-				link,
-				fullName: user.userName,
-			};
-			const subject = "DAT LAI MAT KHAU";
+		sendMailForgotPass(user) {
+			const link = `<a href="${process.env.APP_URL_CLIENT}/reset-Password?email=${user.email}&token=${user.reset_token}"> CLICK HERE TO RESET PASSWORD </a>`;
 			const payload = {
 				to: user.email,
 				subject: "DAT LAI MAT KHAU",
-				html: context,
+				html: link,
 			};
 			this.broker.call("mailer.send", payload);
 		},

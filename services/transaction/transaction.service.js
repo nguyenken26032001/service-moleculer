@@ -48,7 +48,7 @@ module.exports = {
 				});
 				// const dateTransition = new Date().getTime();
 				return this.adapter.insert({
-					userId: new ObjectID(userId),
+					userId: userId,
 					packageId: packageId,
 					transactionPrice: dataPackage.price,
 					quantityToken: dataPackage.quantityToken,
@@ -57,7 +57,6 @@ module.exports = {
 				});
 			},
 		},
-		//nghi failed
 		findOne: {
 			params: {
 				filter: { type: "object" },
@@ -74,9 +73,7 @@ module.exports = {
 				let arrNamePackage = [];
 				const dataTransactions = await this.adapter.find({
 					query: {
-						userId: this.adapter.stringToObjectID(
-							ctx.params.userId
-						),
+						userId: ctx.params.userId,
 					},
 				});
 				for (let index = 0; index < dataTransactions.length; index++) {
@@ -91,6 +88,19 @@ module.exports = {
 					});
 				}
 
+				return dataTransactions;
+			},
+		},
+		getTransaction__test: {
+			rest: "GET /getTransaction/:userId",
+			auth: "required",
+			role: "user",
+			async handler(ctx) {
+				const dataTransactions = await this.adapter.find({
+					query: {
+						userId: ctx.params.userId,
+					},
+				});
 				return dataTransactions;
 			},
 		},

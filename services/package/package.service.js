@@ -5,7 +5,7 @@ module.exports = {
 	name: "packages",
 	mixins: [DbMixin("packages")],
 	settings: {
-		fields: ["_id", "packageName", "quantityToken", "expire", "price"],
+		// fields: ["_id", "packageName", "quantityToken", "expire", "price"],
 		entityValidators: {
 			packageName: "string|min:4|trim:true",
 			quantityToken: "number",
@@ -42,7 +42,8 @@ module.exports = {
 			role: "user",
 			async handler(ctx) {
 				const dataPackage = await this.adapter.findOne({
-					_id: this.adapter.stringToObjectID(ctx.params.packageId),
+					// _id: this.adapter.stringToObjectID(ctx.params.packageId),
+					_id: new ObjectId(ctx.params.packageId),
 				});
 				if (!dataPackage) {
 					return {
