@@ -20,14 +20,23 @@ module.exports = {
 	name: "user",
 	mixins: [DbMixin("users"), token],
 	settings: {
+		MODE_CHARGE: process.env.MODE_CHARGE,
+		MODE_WITH_DRAW: process.env.MODE_WITH_DRAW,
 		JWT_SECRET: process.env.JWT_TOKEN,
 		DOMAIN_NAME: process.env.DOMAIN_NAME,
 		PACKAGE_ID_FREE: process.env.PACKAGE_ID_FREE,
-		fields: ["_id", "userName", "email", "password"],
+		fields: [
+			"_id",
+			"userName",
+			"email",
+			"password",
+			"token",
+			"expiredDate",
+		],
 		entityValidator: {
 			userName: "string|min:5",
 			email: "string|email|unique",
-			password: "string|min:4",
+			password: [{ type: "string", min: 4 }],
 		},
 	},
 	actions: {
@@ -36,14 +45,17 @@ module.exports = {
 			params: {
 				userName: { type: "string", required: true, min: 5 },
 				email: { type: "email", required: true },
-				password: { type: "string", required: true, min: 4 },
+				password: {
+					type: "string",
+					min: 4,
+					required: true,
+					min: 4,
+					optional: true,
+				},
 			},
 			async handler(ctx) {
-				const queryByEmail = ctx.params.email
-					? { email: ctx.params.email }
-					: {};
 				const isExist = await this.adapter.find({
-					query: queryByEmail,
+					query: { email: ctx.params.email },
 					fields: ["email"],
 				});
 				if (isExist.length > 0) {
@@ -56,24 +68,35 @@ module.exports = {
 						parseInt(process.env.BCRYPT_SALT_ROUNDS)
 					);
 					ctx.params.password = passwordHash;
-					const user = await this.adapter.insert(ctx.params);
-					console.log(
-						"user id: " + JSON.stringify(user._id).slice(1, -1) // delete "" ở 2 đầu chuỗi
-					);
-					const activePackageFree = await ctx.call(
-						"transactions.addTransaction",
-						{
-							packageId: this.settings.PACKAGE_ID_FREE,
-							userId: JSON.stringify(user._id).slice(1, -1),
-						}
-					);
+					const object = {
+						userName: ctx.params.userName,
+						email: ctx.params.email,
+						password: passwordHash,
+					};
+					const user = await this.adapter.insert(object);
+					const createdAt = new Date().getTime();
+					const userId = JSON.stringify(user._id).slice(1, -1); // delete "" ở 2 đầu chuỗi
+					user._id = userId; // gán lại id = string -> gọi event xử lý userId == string
+					const addWallet = {
+						userId: userId,
+						createdAt: createdAt,
+						expiredDate: 7,
+						quantityToken: 100,
+						type: "free",
+						mode: this.settings.MODE_CHARGE,
+					};
+					ctx.emit("wallet.change", addWallet);
+					ctx.emit("wallet.changeToken", user);
 					return {
 						success: true,
 						code: 200,
-						user: {
+						userName: user.userName,
+						email: user.email,
+						token: this.generateToken({
+							userId: user._id,
 							userName: user.userName,
-							password: user.password,
-						},
+							role: "user",
+						}),
 					};
 				}
 			},
@@ -110,13 +133,13 @@ module.exports = {
 				return {
 					success: true,
 					code: 200,
-					user: {
-						token: this.generateToken({
-							userId: user._id,
-							userName: user.userName,
-							role: "user",
-						}),
-					},
+					userName: user.userName,
+					email: user.email,
+					token: this.generateToken({
+						userId: user._id,
+						userName: user.userName,
+						role: "user",
+					}),
 				};
 			},
 		},
@@ -148,10 +171,22 @@ module.exports = {
 		getInfo: {
 			auth: "required",
 			auth: "user",
-			rest: "GET /get",
-			// cache: true,
+			rest: "GET /get-info",
 			async handler(ctx) {
 				return ctx.meta.user;
+			},
+		},
+		updateUserInfo: {
+			auth: "required",
+			auth: "user",
+			async handler(ctx) {
+				console.log("update ok");
+				return this.adapter.updateById(ctx.params.id, {
+					$set: {
+						token: ctx.params.token,
+						expiredDate: ctx.params.expiredDate,
+					},
+				});
 			},
 		},
 		resetPassword: {
@@ -178,6 +213,7 @@ module.exports = {
 			},
 		},
 		getInfoPackageUserBuy: {
+			//no need
 			rest: "GET /info-package-user-buy/:userId",
 			auth: "required",
 			role: "user",
@@ -198,7 +234,6 @@ module.exports = {
 						expired += 30;
 					}
 				});
-
 				return {
 					totalToken: totalToken,
 					expired: expired,
@@ -245,13 +280,6 @@ module.exports = {
 					code: 200,
 					message: "Password updated successfully",
 				};
-			},
-		},
-		sum: {
-			rest: "GET /sum",
-
-			async handler(ctx) {
-				return ctx.params.a + ctx.params.b;
 			},
 		},
 	},

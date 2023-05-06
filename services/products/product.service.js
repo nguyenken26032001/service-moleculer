@@ -72,10 +72,6 @@ module.exports = {
 				return await this.adapter.updateById(ctx.params.id, {
 					$set: { ...ctx.params },
 				});
-				return await this.adapter.updateById(
-					this.decodeID(ctx.params.id),
-					{ $set: { ...ctx.params } }
-				);
 			},
 		},
 		deleteProduct: {

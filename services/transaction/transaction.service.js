@@ -6,6 +6,8 @@ module.exports = {
 	name: "transactions",
 	mixins: [DbMixin("transactions")], //connect db and connect table services in db
 	settings: {
+		MODE_CHARGE: process.env.MODE_CHARGE,
+		MODE_WITH_DRAW: process.env.MODE_WITH_DRAW,
 		fields: [
 			"_id",
 			"userId",
@@ -36,18 +38,13 @@ module.exports = {
 			rest: "POST /add",
 			auth: "required",
 			role: "user",
-			// params: {
-			// 	packageId: { type: "string", required: true },
-			// 	userId: { type: "string", require: true },
-			// },
 			async handler(ctx) {
 				const packageId = ctx.params.packageId;
 				const userId = ctx.params.userId;
 				const dataPackage = await ctx.call("packages.getPackage", {
 					packageId: packageId, // <=> packageId
 				});
-				// const dateTransition = new Date().getTime();
-				return this.adapter.insert({
+				this.adapter.insert({
 					userId: userId,
 					packageId: packageId,
 					transactionPrice: dataPackage.price,
@@ -55,6 +52,16 @@ module.exports = {
 					createdAt: new Date().getTime(),
 					status: 1,
 				});
+				const addWallet = {
+					userId: userId,
+					createdAt: new Date().getTime(),
+					expiredDate: dataPackage.expire,
+					quantityToken: dataPackage.quantityToken,
+					type: dataPackage.packageName,
+					mode: this.settings.MODE_CHARGE,
+				};
+				ctx.emit("wallet.change", addWallet); // event biến động ví token
+				ctx.emit("wallet.changeToken", { _id: userId }); // event change token for user
 			},
 		},
 		findOne: {

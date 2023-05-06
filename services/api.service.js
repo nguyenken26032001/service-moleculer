@@ -169,6 +169,7 @@ module.exports = {
 		async authorize(ctx, route, req) {
 			// Get the authenticated user.
 			const user = ctx.meta.user;
+			console.log("info:", user);
 			// It check the `auth` property in action schema.
 			if (
 				req.$action.auth == "required" &&

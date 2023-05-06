@@ -16,7 +16,7 @@ module.exports = {
 	actions: {
 		addPackage: {
 			rest: "POST /add",
-			role: "user",
+			//role : admin, auth: required
 			params: {
 				packageName: { type: "string", required: true },
 				quantityToken: { type: "number", required: true },
@@ -29,17 +29,17 @@ module.exports = {
 		},
 		listPackage: {
 			rest: "GET /list",
-			auth: "required",
-			role: "user",
-			cache: true,
+			// auth: "required",
+			// role: "admin",
+			// cache: true,
 			async handler() {
 				return this.adapter.find();
 			},
 		},
 		getPackage: {
 			rest: "GET /:packageId",
-			auth: "required",
-			role: "user",
+			// auth: "required",
+			// role: "admin",
 			async handler(ctx) {
 				const dataPackage = await this.adapter.findOne({
 					// _id: this.adapter.stringToObjectID(ctx.params.packageId),
